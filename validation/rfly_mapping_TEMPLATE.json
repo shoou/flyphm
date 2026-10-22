@@ -1,0 +1,10 @@
+{
+  "columns": {
+    "REPLACE_NATIVE_TIME_COLUMN": "timestamp_s",
+    "REPLACE_NATIVE_GYRO_COLUMN": "gyro_x",
+    "REPLACE_NATIVE_MOTOR_COLUMN": "motor_signal"
+  },
+  "features": ["gyro_x", "motor_signal"],
+  "label_from_parent": true,
+  "id_from_parent": true
+}

@@ -1,0 +1,7 @@
+{
+  "date":"2026-10-22",
+  "rflymad":{"official_metadata_verified":true,"adapter_implemented":true,"real_dataset_downloaded":false,"real_validation_completed":false,"real_macro_f1":null},
+  "nasa_battery":{"official_metadata_verified":true,"matlab_adapter_implemented":true,"leave_one_battery_out_code_implemented":true,"real_dataset_downloaded":false,"real_validation_completed":false,"real_mae_cycles":null},
+  "synthetic_starter":{"executed_in_previous_work":true,"synthetic_only":true,"reported_macro_f1":0.993},
+  "note":"Real data downloads unavailable in execution environment; do not attribute synthetic results to RflyMAD or NASA."
+}
