@@ -19,7 +19,7 @@ def perform(fn,*args,**kwargs):
 def frame(rows,columns=None):
     if not rows:st.info('暂无记录。');return
     df=pd.DataFrame(rows)
-    if 'family' in df:df['family']=df['family'].map({'uav':'动力诊断','battery':'电池寿命','unknown':'待接入'})
+    if 'family' in df:df['family']=df['family'].map({'uav':'动力诊断','battery':'电池寿命','unknown':'待接入','servo':'伺服诊断'})
     for flag in ['critical','enabled']:
         if flag in df:df[flag]=df[flag].map({0:'否',1:'是'})
     if columns:df=df[list(columns)].rename(columns=columns)
@@ -48,7 +48,7 @@ def monitor(view="装备态势"):
         left,right=st.columns([2,1])
         with left:
             st.subheader('装备态势')
-            kind=st.selectbox('装备类型',['全部','UAV','UGV','部件台架'])
+            kind=st.selectbox('装备类型',['全部','UAV','UGV','部件台架','伺服台架'])
             shown=[a for a in rows if kind=='全部' or a['kind']==kind]
             frame([{**a,'coverage':f"{a['coverage']:.0%}",'mode':'演示' if a['is_demo'] else '用户'} for a in shown],{'name':'装备','kind':'类型','mode':'来源','health_status':'评估状态','coverage':'部件覆盖','active_alerts':'告警','open_orders':'待办'})
         with right:
@@ -84,7 +84,7 @@ def equipment(view='装备档案'):
     if view=='新增装备':
         with st.form('asset_new'):
             c1,c2=st.columns(2);name=c1.text_input('装备名称');serial=c2.text_input('唯一编号')
-            kind=c1.selectbox('装备类型',['UAV','UGV','部件台架']);model=c2.text_input('型号')
+            kind=c1.selectbox('装备类型',['UAV','UGV','部件台架','伺服台架']);model=c2.text_input('型号')
             owner=c1.text_input('责任人');location=c2.text_input('位置 / 单位')
             demo=st.checkbox('演示档案（允许绑定公开案例）');source=st.text_input('来源说明',value='用户建档，数据来源待确认')
             if st.form_submit_button('创建装备',type='primary'):perform(p.create_asset,name,kind,serial,model,owner,location,source,demo=demo)
@@ -106,7 +106,7 @@ def equipment(view='装备档案'):
                 frame([n for n in components if n['parent_id']==system['id']],{'name':'部件','family':'模型领域','critical':'关键部件','model_id':'绑定版本','case_id':'数据案例'})
         with st.form('component_add'):
             parent=st.selectbox('所属分系统',[n['id'] for n in systems],format_func=lambda x:next(n['name'] for n in systems if n['id']==x))
-            name=st.text_input('部件名称');family=st.selectbox('评估领域',['unknown','uav','battery'],format_func=lambda x:{'unknown':'尚无模型','uav':'动力惯性信号','battery':'电池退化'}[x]);critical=st.checkbox('关键部件')
+            name=st.text_input('部件名称');family=st.selectbox('评估领域',['unknown','uav','battery','servo'],format_func=lambda x:{'unknown':'尚无模型','uav':'动力惯性信号','battery':'电池退化','servo':'伺服振动'}[x]);critical=st.checkbox('关键部件')
             if st.form_submit_button('增加部件'):perform(p.add_component,a['id'],parent,name,family,critical)
     if view=='数据与模型绑定':
         st.caption('每个部件绑定明确的数据案例和模型版本。变更绑定后，旧分析会标为待重新分析。0 表示使用全部已导入观测。')
@@ -127,6 +127,9 @@ def equipment(view='装备档案'):
 
 
 def health(uav_run,battery_run,view='装备健康分析'):
+    if view=='伺服执行机构诊断':
+        from src.servo_views import case_page
+        case_page();return
     if view!='装备健康分析':render_lab(view,uav_run,battery_run);return
     a=pick_asset('health_asset')
     if not a:return
@@ -150,6 +153,12 @@ def health(uav_run,battery_run,view='装备健康分析'):
         st.caption(r['evidence'])
         if r['family']=='uav':
             st.write(f"最新分类：{r['latest_class']} 个损伤螺旋桨类别；分类概率 {r['probability']:.1%}；故障分类窗口占比 {r['fault_fraction']:.1%}。")
+        elif r['family']=='servo':
+            st.write(f"最新状态：{r['class_name']}；分类概率 {r['probability']:.1%}。")
+            st.caption(r['recommended_action'])
+            if 'reference_class_name' in r:
+                st.caption('公开案例标注：'+r['reference_class_name']+'（仅事后对照，未参与模型输入）')
+                if r['latest_class']!=r['reference_class']:st.warning('当前有效窗口与案例标注不一致，是已知误判，须人工复核。')
         else:
             st.write(f"观测 SOH {r['score']:.1f}%，容量 {r['capacity_ah']:.3f} Ah。{r['rul_status']}")
             if r['rul'] is not None:
@@ -158,8 +167,9 @@ def health(uav_run,battery_run,view='装备健康分析'):
         if path.exists():
             df=pd.read_parquet(path)
             fields=['propulsion_hi_proxy','anomaly_score','class_probability'] if r['family']=='uav' else ['capacity_ah','soh']
+            if r['family']=='servo':fields=['rms','crest','kurtosis','dominant_hz','class_probability']
             field=st.selectbox('趋势指标',fields)
-            chart(px.line(df,x='timestamp_s' if r['family']=='uav' else 'cycle_idx',y=field))
+            chart(px.line(df,x='cycle_idx' if r['family']=='battery' else 'timestamp_s',y=field))
         with st.expander('来源、模型版本与数据质量'):st.json(r['provenance'])
     st.download_button('导出本次分析',p.encode({'analysis':run,'results':results}),file_name=anid+'.json',mime='application/json')
 
@@ -190,6 +200,9 @@ def maintenance(uav_run,battery_run,view='工单与履历'):
 
 
 def models(uav_run,battery_run,view='模型目录与绑定'):
+    if view=='伺服训练与验证':
+        from src.servo_views import training_page
+        training_page();return
     if view!='模型目录与绑定':render_lab(view,uav_run,battery_run);return
     if st.button('同步已完成实验'):perform(p.sync_models)
     rows=p.records('SELECT * FROM models ORDER BY run_id DESC')
@@ -199,6 +212,8 @@ def models(uav_run,battery_run,view='模型目录与绑定'):
     path=p.model_path(mid);metrics=p.read_json(path/'metrics.json')
     if m['family']=='uav':
         test=metrics['results']['test'];metric_row([('测试 Macro-F1',f"{test['macro_f1']:.3f}",'按任务划分的测试窗口'),('测试准确率',f"{test['accuracy']:.3f}",'不是整机故障检出率')])
+    elif m['family']=='servo':
+        test=metrics['results']['test'];metric_row([('记录 Macro-F1',f"{test['records']['macro_f1']:.3f}",'按转速隔离的完整记录'),('窗口 Macro-F1',f"{test['windows']['macro_f1']:.3f}",'1 秒非重叠窗口')])
     else:
         metric_row([('RUL MAE',f"{metrics['random_forest']['mae']:.2f}",'循环，留一电池验证'),('RUL RMSE',f"{metrics['random_forest']['rmse']:.2f}",'循环，失效前评估')])
     with st.form('model_registry'):

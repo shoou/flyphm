@@ -46,8 +46,8 @@ with st.sidebar:
     with st.expander('实验分析版本'):
         uav_name=st.selectbox('无人机实验',[r.name for r in uav]) if uav else None
         battery_name=st.selectbox('电池实验',[r.name for r in battery]) if battery else None
-    st.caption('离线原型 / 公开真实数据\n\n装备分析使用各部件绑定版本；此处版本仅用于案例回放与实验页面。')
-    st.caption('导航 · 通信 · 伺服 · UGV 实车模型待接入')
+    st.caption('离线原型 / 公开真实数据\n\n')
+    st.caption('伺服已支持公开台架诊断')
 uav_run=p.ROOT/'runs'/uav_name if uav_name else None
 battery_run=p.ROOT/'runs'/battery_name if battery_name else None
 subtitles={'监测中心':'全局装备态势、异常证据与维修入口','装备管理':'装备档案、分系统结构与数据模型关联','健康分析':'从部件诊断到健康趋势与剩余寿命','维修管理':'从异常处置到复检关闭，保留完整履历','模型中心':'管理训练实验、验证指标和模型应用关系'}

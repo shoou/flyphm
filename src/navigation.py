@@ -4,9 +4,9 @@ import streamlit as st
 MENUS = {
     '监测中心': [('overview','装备态势'),('alerts','告警与处置')],
     '装备管理': [('assets','装备档案'),('asset_new','新增装备'),('structure','分系统与部件'),('bindings','数据与模型绑定')],
-    '健康分析': [('health','装备健康分析'),('replay','故障诊断回放'),('battery','电池健康与寿命'),('imports','数据导入与推理')],
+    '健康分析': [('health','装备健康分析'),('replay','故障诊断回放'),('battery','电池健康与寿命'),('servo','伺服执行机构诊断'),('imports','数据导入与推理')],
     '维修管理': [('orders','工单与履历'),('incidents','异常事件与复核'),('reviews','历史窗口复核')],
-    '模型中心': [('models','模型目录与绑定'),('training','模型训练与验证'),('comparison','模型版本对比')],
+    '模型中心': [('models','模型目录与绑定'),('training','模型训练与验证'),('servo_training','伺服训练与验证'),('comparison','模型版本对比')],
 }
 ROUTES = {route:(group,label) for group,items in MENUS.items() for route,label in items}
 ICONS = {'监测中心':':material/dashboard:','装备管理':':material/devices:','健康分析':':material/monitor_heart:','维修管理':':material/build:','模型中心':':material/model_training:'}

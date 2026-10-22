@@ -120,3 +120,27 @@ def test_every_submenu_and_refresh_route(app):
     app.query_params['page']='invalid'
     app.run();assert_no_errors(app)
     assert app.title[0].value=='装备态势'
+
+
+def test_servo_pages_and_business_link(app):
+    if not any(r.name.startswith('servo_') for r in list_runs()):pytest.skip('No real servo experiment yet')
+    navigate(app,'健康分析','伺服执行机构诊断');assert_no_errors(app)
+    slider=next(s for s in app.slider if s.label=='伺服已观测到的秒数')
+    slider.set_value(5).run();assert_no_errors(app)
+    assert next(m.value for m in app.metric if m.label=='RUL')=='无法评估'
+    next(b for b in app.button if b.label=='建立伺服演示装备').click().run();assert_no_errors(app)
+    assert app.title[0].value=='装备健康分析'
+    servo_id=phm.platform.records('SELECT id FROM assets WHERE serial="DEMO-SERVO-001"')[0]['id']
+    assert next(s for s in app.selectbox if s.label=='当前装备').value==servo_id
+    # Existing selector state must not override a case-page deep link to another asset.
+    other=phm.platform.records('SELECT id FROM assets WHERE kind="UAV"')[0]['id']
+    next(s for s in app.selectbox if s.label=='当前装备').select(other).run()
+    navigate(app,'健康分析','伺服执行机构诊断')
+    next(b for b in app.button if b.label=='打开伺服装备健康分析').click().run();assert_no_errors(app)
+    assert next(s for s in app.selectbox if s.label=='当前装备').value==servo_id
+    navigate(app,'模型中心','伺服训练与验证');assert_no_errors(app)
+    assert any(m.label=='测试记录 Macro-F1' for m in app.metric)
+    navigate(app,'模型中心','模型目录与绑定')
+    mid=next(r.name for r in list_runs() if r.name.startswith('servo_'))
+    next(s for s in app.selectbox if s.label=='管理模型').select(mid).run();assert_no_errors(app)
+    assert any(m.label=='记录 Macro-F1' for m in app.metric)

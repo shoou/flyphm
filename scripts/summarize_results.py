@@ -37,6 +37,17 @@ def main():
                 sections.append(pd.DataFrame({'baseline':fresh['baseline'],'candidate':fresh['candidate']}).T.drop(columns=['delay_reason','detection_delay_s']).to_html())
                 sections.append('<p>新增任务五分类 Macro-F1：'+str(round(fresh['classification']['macro_f1'],4))+'</p>')
             fig=px.imshow(score['confusion_matrix'],text_auto=True,title='测试集混淆矩阵（标签为损坏螺旋桨数量）',labels={'x':'预测','y':'真实'})
+        elif task=='servo':
+            score=m['results']['test']
+            status['servo']={'real_dataset_downloaded':True,'real_validation_completed':True,'run_id':run.name,
+                'record_macro_f1':score['records']['macro_f1'],'window_macro_f1':score['windows']['macro_f1'],
+                'recordings':m['recordings'],'test_records':score['n_records'],'split_unit':m['split_unit'],
+                'note':'同一无负载台架，按转速隔离；非跨设备验证，不输出 RUL。'}
+            sections.append(pd.DataFrame([{'集合':role,'记录数':r['n_records'],'窗口数':r['n_windows'],
+                '记录 Macro-F1':r['records']['macro_f1'],'窗口 Macro-F1':r['windows']['macro_f1']} for role,r in m['results'].items()]).to_html(index=False))
+            sections.append('<p>仅振动仪 WAV；测试转速 20%、50%，验证转速 10%、40%。不以同一录音的重叠窗口进行随机训练/测试划分。</p>')
+            labels=[m['labels'][str(i)] for i in range(4)]
+            fig=px.imshow(score['records']['confusion_matrix'],x=labels,y=labels,text_auto=True,title='伺服完整测试记录混淆矩阵',labels={'x':'预测','y':'真实'})
         else:
             status['nasa_battery']={'real_dataset_downloaded':True,'real_validation_completed':True,'run_id':run.name,'mae_cycles':m['random_forest']['mae'],'rmse_cycles':m['random_forest']['rmse'],'interval_coverage':m['interval']['empirical_coverage']}
             sections.append(pd.DataFrame(m['per_battery']).T.to_html())

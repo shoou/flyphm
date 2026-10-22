@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-22T12:31:16.131822+08:00",
+  "date": "2026-10-22T14:34:29.023318+08:00",
   "rflymad": {
     "real_dataset_downloaded": false,
     "real_validation_completed": false,
@@ -205,6 +205,17 @@
       },
       "limitations": "Previously unused missions from the same public platform; not independent aircraft or verified onset labels. Do not retune on these scores."
     }
+  },
+  "servo": {
+    "real_dataset_downloaded": true,
+    "real_validation_completed": true,
+    "run_id": "servo_20261022T063407_9c4158",
+    "record_macro_f1": 0.5484848484848485,
+    "window_macro_f1": 0.511749138863959,
+    "recordings": 56,
+    "test_records": 16,
+    "split_unit": "speed_pct across all conditions/directions",
+    "note": "同一无负载台架，按转速隔离；非跨设备验证，不输出 RUL。"
   },
   "nasa_battery": {
     "real_dataset_downloaded": true,

@@ -62,7 +62,7 @@ def asset(asset_id):
 
 def create_asset(name,kind,serial,model='',owner='',location='',provenance='用户建档，来源待确认',description='',demo=False):
     if not name.strip() or not serial.strip(): raise ValueError('名称和唯一编号不能为空')
-    if kind not in ['UAV','UGV','部件台架']: raise ValueError('不支持的装备类型')
+    if kind not in ['UAV','UGV','部件台架','伺服台架']: raise ValueError('不支持的装备类型')
     if not provenance.strip(): raise ValueError('必须说明数据/装备来源')
     aid=uid('EQ');t=now()
     with db() as con:
@@ -70,10 +70,10 @@ def create_asset(name,kind,serial,model='',owner='',location='',provenance='用�
         except sqlite3.IntegrityError as exc: raise ValueError('装备编号已存在') from exc
         templates={'UAV':[('动力','uav',1),('能源','battery',1),('导航','unknown',1),('通信','unknown',1),('执行机构','unknown',1)],
                    'UGV':[('驱动','unknown',1),('能源','battery',1),('转向','unknown',1),('制动','unknown',1),('导航','unknown',0),('通信','unknown',0)],
-                   '部件台架':[('试验对象','battery',1)]}
+                   '部件台架':[('试验对象','battery',1)],'伺服台架':[('伺服执行机构','servo',1)]}
         for title,family,critical in templates[kind]:
             sid=uid('SYS');con.execute('INSERT INTO nodes VALUES (?,?,?,?,?,?,?)',(sid,aid,None,title,'subsystem',family,critical))
-            child={'uav':'动力振动监测对象','battery':'电池组件','unknown':title+'组件'}[family]
+            child={'uav':'动力振动监测对象','battery':'电池组件','servo':'直流伺服电机','unknown':title+'组件'}[family]
             con.execute('INSERT INTO nodes VALUES (?,?,?,?,?,?,?)',(uid('CMP'),aid,sid,child,'component',family,critical))
     return aid
 
@@ -87,7 +87,7 @@ def edit_asset(aid,name,model,owner,location,lifecycle,description):
 
 
 def add_component(aid,parent_id,name,family='unknown',critical=False):
-    if not name.strip() or family not in ['uav','battery','unknown']: raise ValueError('部件名称或模型类型无效')
+    if not name.strip() or family not in ['uav','battery','servo','unknown']: raise ValueError('部件名称或模型类型无效')
     parent=records('SELECT * FROM nodes WHERE id=? AND asset_id=? AND kind=?',(parent_id,aid,'subsystem'))
     if not parent: raise ValueError('分系统必须属于当前装备')
     if asset(aid)['lifecycle']=='退役': raise ValueError('退役装备不能修改结构')
@@ -109,8 +109,9 @@ def sync_models():
     with db() as con:
         for path in list_runs():
             metrics=read_json(path/'metrics.json');family=metrics['task']
-            if family not in ['uav','battery']:continue
+            if family not in ['uav','battery','servo']:continue
             alias=('工况告警 + 螺旋桨分类' if (path/'alert_policy.joblib').exists() else '螺旋桨分类基线') if family=='uav' else '电池 RUL 留一模型'
+            if family=='servo':alias='伺服振动四状态诊断'
             con.execute('INSERT OR IGNORE INTO models VALUES (?,?,?,?,?,?)',(path.name,family,alias,1,'公开数据研究模型；绑定前核对适用范围',now()))
 
 
@@ -132,7 +133,11 @@ def sources(family):
     # Predictions for the same original data recur across models; catalog latest snapshot only.
     if runs:
         path=runs[0]
-        if family=='uav':
+        if family=='servo':
+            w=pd.read_parquet(path/'predictions.parquet')
+            for rid,g in w.groupby('record_id'):
+                result.append({'kind':'servo_case','ref':path.name,'case':str(rid),'label':f"伺服 / {g.split.iloc[0]} / {rid}",'provenance':'公开无负载台架振动；单台设备，仅跨转速验证'})
+        elif family=='uav':
             w=pd.read_parquet(path/'predictions.parquet')
             for mid,g in w.groupby('mission_id'):
                 result.append({'kind':'uav_case','ref':path.name,'case':str(mid),'label':f"TII / {g.split.iloc[0]} / {mid}",'provenance':'公开室内飞行任务；不能作为当前实物装备的实测数据'})
@@ -156,15 +161,19 @@ def bind(node_id,run_id,source_kind,source_ref,case_id,cutoff=0):
     if a['lifecycle']=='退役':raise ValueError('退役装备不能绑定模型')
     model=records('SELECT * FROM models WHERE run_id=?',(run_id,))
     if not model or not model[0]['enabled'] or model[0]['family']!=n['family']:raise ValueError('模型类型不匹配或已停用')
-    if source_kind not in ['uav_case','battery_case','csv']:raise ValueError('未知数据来源')
-    if (source_kind=='battery_case')!=(n['family']=='battery'):raise ValueError('数据与部件类型不匹配')
+    if source_kind not in ['uav_case','battery_case','servo_case','csv']:raise ValueError('未知数据来源')
+    expected={'uav_case':'uav','csv':'uav','battery_case':'battery','servo_case':'servo'}
+    if expected[source_kind]!=n['family']:raise ValueError('数据与部件类型不匹配')
     if not np.isfinite(cutoff) or cutoff<0:raise ValueError('截止时间/循环无效')
     if source_kind=='battery_case' and cutoff!=int(cutoff):raise ValueError('电池截止循环须为整数')
     if source_kind!='csv' and not a['is_demo']:raise ValueError('公开案例只能绑定到演示档案；真实装备请绑定自身导入数据')
     if Path(source_ref).name!=source_ref:raise ValueError('无效来源编号')
+    if source_kind!='csv' and read_json(model_path(source_ref)/'metrics.json')['task']!=n['family']:
+        raise ValueError('来源实验与部件类型不匹配')
     if source_kind=='csv':
         folder=ROOT/'data/imports'/source_ref
         available=pd.read_parquet(folder/'telemetry.parquet').mission_id.unique()
+    elif source_kind=='servo_case':available=pd.read_parquet(model_path(source_ref)/'predictions.parquet').record_id.unique()
     elif source_kind=='uav_case':available=pd.read_parquet(model_path(source_ref)/'predictions.parquet').mission_id.unique()
     else:available=pd.read_parquet(model_path(source_ref)/'curves.parquet').battery_id.unique()
     if case_id not in available:raise ValueError('数据案例不存在')
@@ -210,6 +219,9 @@ def analyze_component(binding,folder):
     run=model_path(binding['model_id']);family=model[0]['family'];cutoff=binding['cutoff'];case=binding['case_id']
     provenance={'model_run':run.name,'source_kind':binding['source_kind'],'source_ref':binding['source_ref'],'case_id':case,'cutoff':cutoff}
     events=[]
+    if family=='servo':
+        from phm.servo import analyze_binding
+        return analyze_binding(binding,folder,run,model_path(binding['source_ref']))
     if family=='uav':
         if binding['source_kind']=='csv':
             origin=ROOT/'data/imports'/binding['source_ref'];out=infer_import(origin,run)
@@ -422,3 +434,23 @@ def seed_demo():
         bind(component['id'],available[0]['run_id'],source['kind'],source['ref'],source['case'],60 if family=='battery' else 0)
     with db() as con:con.execute('INSERT INTO settings VALUES (?,?)',('demo_seeded',now()))
     for aid in [u,b]:analyze_asset(aid)
+
+
+def seed_servo_demo():
+    """Add a separate real-data demo without altering existing assets or reviews."""
+    init();sync_models()
+    models=records('SELECT * FROM models WHERE family="servo" AND enabled=1 ORDER BY run_id DESC')
+    if not models:raise ValueError('请先完成伺服数据准备与训练')
+    existing=records('SELECT id,is_demo FROM assets WHERE serial="DEMO-SERVO-001"')
+    if existing:
+        if not existing[0]['is_demo']:raise ValueError('演示编号被真实装备占用')
+        return existing[0]['id']
+    choices=sources('servo')
+    source=next((x for x in choices if x['case']=='loose_foundation_no_reversal_020'),None)
+    if source is None:raise ValueError('缺少预设独立测试演示记录')
+    aid=create_asset('伺服执行机构诊断台架','伺服台架','DEMO-SERVO-001',model='3PI12.06 / 无负载实验',owner='演示组',location='离线台架',
+        provenance='Mendeley g28trvywnx V13，CC BY 4.0；独立公开台架，不代表无人机或无人车实装测试',demo=True)
+    node=next(n for n in structure(aid) if n['kind']=='component')
+    bind(node['id'],models[0]['run_id'],source['kind'],source['ref'],source['case'])
+    analyze_asset(aid)
+    return aid
