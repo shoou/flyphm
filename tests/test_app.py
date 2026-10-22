@@ -4,6 +4,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 from phm.training import list_runs
 import phm.events
+import phm.platform
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -11,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def app(tmp_path, monkeypatch):
     # UI verification never inserts test review events into the user's ledger.
     monkeypatch.setattr(phm.events, 'ROOT', tmp_path)
+    monkeypatch.setattr(phm.platform, 'DB_PATH', tmp_path/'platform.sqlite')
+    monkeypatch.setattr(phm.platform, 'ARTIFACTS_ROOT', tmp_path/'analyses')
+    phm.platform.seed_demo()
     return AppTest.from_file(str(ROOT/'src/app.py'), default_timeout=40).run()
 
 
@@ -20,13 +24,13 @@ def assert_no_errors(at):
 
 def test_overview_and_training_page(app):
     assert_no_errors(app)
-    app.radio[0].set_value('模型训练与验证').run()
+    navigate(app,'模型中心','模型训练与验证')
     assert_no_errors(app)
 
 
 def test_battery_censored_and_prefix_navigation(app):
     if not any(r.name.startswith('battery_') for r in list_runs()): pytest.skip('NASA experiment not present')
-    app.radio[0].set_value('电池健康与寿命').run(); assert_no_errors(app)
+    navigate(app,'健康分析','电池健康与寿命'); assert_no_errors(app)
     slider = next(s for s in app.slider if s.label=='已观测到的放电循环')
     slider.set_value(20).run(); assert_no_errors(app)
     next(c for c in app.checkbox if '未来' in c.label).check().run(); assert_no_errors(app)
@@ -36,14 +40,14 @@ def test_battery_censored_and_prefix_navigation(app):
 
 def test_replay_seek_and_review(app):
     if not any(r.name.startswith('uav_') for r in list_runs()): pytest.skip('UAV experiment not present')
-    app.radio[0].set_value('故障诊断回放').run(); assert_no_errors(app)
+    navigate(app,'健康分析','故障诊断回放'); assert_no_errors(app)
     app.slider[0].set_value(10).run(); assert_no_errors(app)
     next(b for b in app.button if b.label=='将当前窗口加入待复核事件').click().run(); assert_no_errors(app)
     next(b for b in app.button if b.label=='播放').click().run(); assert_no_errors(app)
     assert app.session_state['playing']
     next(b for b in app.button if b.label=='暂停').click().run(); assert_no_errors(app)
     assert not app.session_state['playing']
-    app.radio[0].set_value('设备与案例总览').run(); assert_no_errors(app)
+    navigate(app,'维修管理','历史窗口复核'); assert_no_errors(app)
     next(s for s in app.selectbox if s.label=='处理状态').select('已确认')
     next(b for b in app.button if b.label=='保存处理记录').click().run(); assert_no_errors(app)
     assert phm.events.read_events().iloc[0].status=='已确认'
@@ -51,9 +55,9 @@ def test_replay_seek_and_review(app):
 
 def test_import_preview_and_model_comparison(app):
     if not any((r/'alert_policy.joblib').exists() for r in list_runs()): pytest.skip('No alert experiment')
-    app.radio[0].set_value('模型版本对比').run();assert_no_errors(app)
+    navigate(app,'模型中心','模型版本对比');assert_no_errors(app)
     assert any('旧测试' in w.value for w in app.warning)
-    app.radio[0].set_value('数据导入与推理').run();assert_no_errors(app)
+    navigate(app,'健康分析','数据导入与推理');assert_no_errors(app)
     next(b for b in app.button if b.label=='载入现有真实飞行任务作为导入示例').click().run();assert_no_errors(app)
     assert any(e.label=='保存此数据集' and not e.disabled for e in app.button)
     # Missing axis is allowed to save as partial, but cannot silently claim a healthy prediction.
@@ -63,9 +67,56 @@ def test_import_preview_and_model_comparison(app):
 
 def test_incident_ui_lifecycle(app):
     if not any((r/'alert_policy.joblib').exists() for r in list_runs()): pytest.skip('No alert experiment')
-    app.radio[0].set_value('异常事件与复核').run();assert_no_errors(app)
+    navigate(app,'维修管理','异常事件与复核');assert_no_errors(app)
     next(b for b in app.button if b.label=='将所选完整事件加入复核台账').click().run();assert_no_errors(app)
     next(s for s in app.selectbox if s.label=='新状态').select('已确认')
     next(t for t in app.text_area if t.label=='处理依据 / 维修措施 / 复检结果').set_value('人工核对振动证据')
     next(b for b in app.button if b.label=='保存事件处理').click().run();assert_no_errors(app)
     assert phm.events.read_incidents().iloc[0].status=='已确认'
+
+
+def navigate(app,main,sub=None):
+    from src.navigation import MENUS
+    app.button('menu_'+main).click().run()
+    if sub:
+        route=next(route for route,title in MENUS[main] if title==sub)
+        app.button('nav_'+route).click().run()
+    return app
+
+
+def test_five_business_pages_and_analysis(app):
+    for page in ['监测中心','装备管理','健康分析','维修管理','模型中心']:
+        navigate(app,page);assert_no_errors(app)
+    navigate(app,'健康分析')
+    next(b for b in app.button if b.label=='运行装备健康分析').click().run()
+    assert_no_errors(app)
+    assert any(m.label=='有效覆盖' for m in app.metric)
+
+
+def test_alert_to_maintenance_workflow(app):
+    navigate(app,'监测中心','告警与处置')
+    next(b for b in app.button if b.label=='生成维修工单').click().run();assert_no_errors(app)
+    navigate(app,'维修管理')
+    assert any(m.label=='待处理' and m.value=='1' for m in app.metric)
+    for status in ['处理中','待复检','已关闭']:
+        next(s for s in app.selectbox if s.label=='下一状态').select(status)
+        next(t for t in app.text_area if t.label=='处理记录').set_value('测试流程记录')
+        if status=='已关闭':next(t for t in app.text_area if '关闭必填' in t.label).set_value('人工复检通过（隔离测试）')
+        next(b for b in app.button if b.label=='保存工单进展').click().run();assert_no_errors(app)
+    assert phm.platform.records('SELECT * FROM orders')[0]['status']=='已关闭'
+
+
+def test_every_submenu_and_refresh_route(app):
+    from src.navigation import MENUS
+    for main,items in MENUS.items():
+        for route,title in items:
+            navigate(app,main,title)
+            assert_no_errors(app)
+            assert app.query_params['page']==route
+            assert not app.radio
+            assert app.title[0].value==title
+    app.run()
+    assert app.title[0].value=='模型版本对比'
+    app.query_params['page']='invalid'
+    app.run();assert_no_errors(app)
+    assert app.title[0].value=='装备态势'
