@@ -11,6 +11,7 @@ import streamlit as st
 from phm.data import ROOT, read_json, prepare_uav, prepare_battery
 from phm.training import list_runs, train_uav, train_battery
 from phm.events import read_events, save_event
+from src.workflows import import_page, incidents_page, comparison_page
 
 st.set_page_config(page_title='PHM · 无人系统健康管理', page_icon='◈', layout='wide')
 st.markdown('''<style>
@@ -55,7 +56,7 @@ battery_runs = [r for r in runs if r.name.startswith('battery_')]
 with st.sidebar:
     st.markdown('## ◈ PHM LAB')
     st.caption('无人系统 · 健康管理原型')
-    page = st.radio('工作台', ['设备与案例总览','故障诊断回放','电池健康与寿命','模型训练与验证'])
+    page = st.radio('工作台', ['设备与案例总览','故障诊断回放','电池健康与寿命','数据导入与推理','异常事件与复核','模型版本对比','模型训练与验证'])
     st.divider()
     uav_name = st.selectbox('无人机实验', [r.name for r in uav_runs], index=0) if uav_runs else None
     battery_name = st.selectbox('电池实验', [r.name for r in battery_runs], index=0) if battery_runs else None
@@ -119,6 +120,8 @@ elif page == '故障诊断回放':
     g = subset[subset.mission_id == mission].sort_values('timestamp_s').reset_index(drop=True)
     st.caption(f"真实飞行 · {role} · 任务级标签：{LABELS[int(g.label.iloc[0])]} · {uav_run.name}")
     st.info('损伤标签适用于整个任务，不包含飞行中故障起始时刻，因此不报告检测延迟。模型概率尚未校准。')
+    if um.get('evaluation_status') == 'previously_seen_test_regression':
+        st.caption('此处旧测试任务仅用于回归回放；冻结参数后的新增任务结果请见“模型版本对比”。')
     token = f'{uav_name}/{mission}'
     if st.session_state.get('replay_token') != token:
         st.session_state.update(replay_token=token, cursor=0, playing=False)
@@ -145,8 +148,10 @@ elif page == '故障诊断回放':
             ('类别概率',f'{row.class_probability:.1%}','随机森林未校准概率'),
             ('动力 HI（示意）',f'{row.propulsion_hi_proxy:.0f} / 100','仅反映振动偏离；非整机健康分')])
         action = ('分类模型未检出损伤，但异常检测已触发；建议复核振动和工况。'
-                  if row.predicted_label == 0 and row.anomaly_flag else row.recommended_action)
+                  if row.predicted_label == 0 and row.get('confirmed_alert',row.anomaly_flag) else row.recommended_action)
         st.write(action)
+        if 'confirmed_alert' in row:
+            st.caption(f"代理工况：{row.get('operating_regime','unknown')} · 原始越限：{'是' if row.raw_anomaly_flag else '否'} · 连续确认告警：{'是' if row.confirmed_alert else '否'}")
         st.caption('导航、能源、通信、伺服：未知。任务风险：尚未建立经过验证的风险模型。')
         left,right = st.columns(2)
         with left:
@@ -156,7 +161,10 @@ elif page == '故障诊断回放':
             else: st.info('当前实验无原始遥测曲线。')
         with right:
             fig = px.line(shown, x='timestamp_s', y='anomaly_score', title='异常分数与验证集阈值', labels={'timestamp_s':'时间 / s','anomaly_score':'异常分数'})
-            fig.add_hline(y=um['thresholds']['anomaly'], line_dash='dash', line_color='#db704d')
+            if 'anomaly_threshold' in shown:
+                fig.add_scatter(x=shown.timestamp_s,y=shown.anomaly_threshold,name='工况阈值',line=dict(dash='dash',color='#db704d'))
+            else:
+                fig.add_hline(y=um['thresholds']['anomaly'], line_dash='dash', line_color='#db704d')
             chart(fig,'anomaly')
         fig = go.Figure()
         fig.add_scatter(x=shown.timestamp_s,y=shown.predicted_label,mode='lines',name='模型判断',line_shape='hv')
@@ -165,7 +173,7 @@ elif page == '故障诊断回放':
         chart(fig,'timeline')
         with st.expander('当前窗口的判断依据', expanded=True):
             st.dataframe(pd.DataFrame({'指标':['加速度模长标准差','健康验证集规则阈值','角速度模长 RMS','异常阈值超出'],
-                '值':[f'{row.acc_norm_std:.4f} m/s²',f"{um['thresholds']['acc_norm_std']:.4f} m/s²",f'{row.gyro_norm_rms:.4f} rad/s', '是' if row.anomaly_flag else '否']}),hide_index=True,width='stretch')
+                '值':[f'{row.acc_norm_std:.4f} m/s²',f"{um['thresholds']['acc_norm_std']:.4f} m/s²",f'{row.gyro_norm_rms:.4f} rad/s', '是' if row.get('raw_anomaly_flag',row.anomaly_flag) else '否']}),hide_index=True,width='stretch')
             st.caption('这些是传感器证据及阈值比较，不能单独证明具体损伤位置。')
         if st.button('将当前窗口加入待复核事件'):
             save_event(uav_run.name,mission,row.timestamp_s,row.predicted_label,'待复核',action)
@@ -219,6 +227,12 @@ elif page == '电池健康与寿命':
             chart(fig)
     st.download_button('导出容量曲线 CSV',g.to_csv(index=False).encode('utf-8-sig'),f'{bid}_capacity.csv','text/csv')
 
+elif page == '数据导入与推理':
+    import_page(uav_run)
+elif page == '异常事件与复核':
+    incidents_page(uav_run)
+elif page == '模型版本对比':
+    comparison_page(uav_runs)
 else:
     st.caption('数据来源、分组划分、模型参数与评估结果随每次实验一起保存。训练和下载分开执行，演示时可直接加载已完成实验。')
     with st.expander('运行新实验', expanded=not runs):
@@ -248,6 +262,8 @@ else:
             with right:
                 imp = load_table(uav_run/'feature_importance.csv').head(10).sort_values('importance')
                 chart(px.bar(imp,x='importance',y='feature',orientation='h',title='全局特征重要性（非因果解释）'))
+            if 'alert_improvement' in um:
+                st.info('下方异常指标保留原始基线。连续确认后的效果及新增任务评价，请查看“模型版本对比”。')
             ev = um['results']['anomaly_events']
             metric_row([('测试任务',str(um['split_counts']['test']),'完整任务隔离'),
                 ('误报事件 / 小时',f"{ev['false_alarm_events_per_hour']:.1f}" if ev['false_alarm_events_per_hour'] is not None else '—','连续异常窗口合并；有效健康窗口时长作为分母'),

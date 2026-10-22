@@ -95,7 +95,10 @@ def uav(per_class=8):
         revision = (folder / 'revision.txt').read_text().strip()
     else:
         revision = json.loads(fetch(f'https://api.github.com/repos/{REPO}/commits/main'))['sha']
-    tree = json.loads(fetch(f'https://api.github.com/repos/{REPO}/git/trees/{revision}?recursive=1'))['tree']
+    listing = json.loads(fetch(f'https://api.github.com/repos/{REPO}/git/trees/{revision}?recursive=1'))
+    listing['requested_revision'] = revision
+    (folder / 'tree.json').write_text(json.dumps(listing))
+    tree = listing['tree']
     blob_info = {x['path']: x for x in tree if x['type'] == 'blob'}
     (folder / 'revision.txt').write_text(revision)
     selected = []

@@ -25,7 +25,17 @@ def main():
         if task=='uav':
             score=m['results']['test']; ev=m['results']['anomaly_events']
             status['tii_uav']={'real_dataset_downloaded':True,'real_validation_completed':True,'run_id':run.name,'macro_f1':score['macro_f1'],'accuracy':score['accuracy']}
-            sections.append(pd.DataFrame([{'测试 Macro-F1':score['macro_f1'],'准确率':score['accuracy'],'任务总数':m['missions'],'健康测试小时':ev['healthy_exposure_hours'],'误报事件/小时':ev['false_alarm_events_per_hour']}]).to_html(index=False))
+            sections.append(pd.DataFrame([{'测试 Macro-F1':score['macro_f1'],'准确率':score['accuracy'],'任务总数':m['missions'],'健康测试小时':ev['healthy_exposure_hours'],'原始基线误报事件/小时':ev['false_alarm_events_per_hour']}]).to_html(index=False))
+            if 'alert_improvement' in m:
+                status['tii_uav']['alert_improvement']=m['alert_improvement']
+                sections.append('<h3>连续确认告警 · 旧测试回归对比</h3>')
+                sections.append(pd.DataFrame(m['alert_improvement']['by_split']['test']).T.drop(columns=['delay_reason','detection_delay_s']).to_html())
+            if (run/'fresh_evaluation.json').exists():
+                fresh=read_json(run/'fresh_evaluation.json')
+                status['tii_uav']['fresh_evaluation']=fresh
+                sections.append('<h3>冻结参数后的新增任务评价</h3><p>健康片段时长有限，不能据此声称长期零误报；来自同一平台，不能证明跨机体泛化。</p>')
+                sections.append(pd.DataFrame({'baseline':fresh['baseline'],'candidate':fresh['candidate']}).T.drop(columns=['delay_reason','detection_delay_s']).to_html())
+                sections.append('<p>新增任务五分类 Macro-F1：'+str(round(fresh['classification']['macro_f1'],4))+'</p>')
             fig=px.imshow(score['confusion_matrix'],text_auto=True,title='测试集混淆矩阵（标签为损坏螺旋桨数量）',labels={'x':'预测','y':'真实'})
         else:
             status['nasa_battery']={'real_dataset_downloaded':True,'real_validation_completed':True,'run_id':run.name,'mae_cycles':m['random_forest']['mae'],'rmse_cycles':m['random_forest']['rmse'],'interval_coverage':m['interval']['empirical_coverage']}

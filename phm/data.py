@@ -45,8 +45,11 @@ def read_tii(path):
 def signal_windows(df, mission_id, label=None, window_s=2., stride_s=1.):
     """Fixed-duration causal windows. Never cross a mission or a >0.2 s gap."""
     rows = []
+    df = df.sort_values("timestamp_s")
+    times = df.timestamp_s.to_numpy()
     for stop in np.arange(window_s, df.timestamp_s.max() + 1e-9, stride_s):
-        w = df[(df.timestamp_s >= stop-window_s) & (df.timestamp_s < stop)]
+        left, right = np.searchsorted(times, [stop-window_s, stop])
+        w = df.iloc[left:right]
         if len(w) < 100 or w.timestamp_s.diff().max() > .2: continue
         if not np.isfinite(w[CHANNELS]).all().all(): continue
         row = {'mission_id': mission_id, 'timestamp_s': float(stop), 'start_s': float(stop-window_s), 'samples': len(w)}

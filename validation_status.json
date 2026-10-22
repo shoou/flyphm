@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-22T12:15:41.636489+08:00",
+  "date": "2026-10-22T12:31:16.131822+08:00",
   "rflymad": {
     "real_dataset_downloaded": false,
     "real_validation_completed": false,
@@ -8,9 +8,203 @@
   "tii_uav": {
     "real_dataset_downloaded": true,
     "real_validation_completed": true,
-    "run_id": "uav_20261022T041525_4c64fe",
+    "run_id": "uav_20261022T042621_25a990",
     "macro_f1": 0.8545891163001617,
-    "accuracy": 0.8541905855338691
+    "accuracy": 0.8541905855338691,
+    "alert_improvement": {
+      "parent_run": "uav_20261022T041525_4c64fe",
+      "selected_candidate": "q0.99_c2_r3",
+      "confirm_windows": 2,
+      "release_windows": 3,
+      "merge_gap_s": 3.0,
+      "selection_set": "validation",
+      "regime_note": "Low/high angular-motion proxy; not annotated flight phases.",
+      "by_split": {
+        "validation": {
+          "baseline": {
+            "false_alarm_events": 6,
+            "healthy_exposure_hours": 0.04638888888888889,
+            "false_alarm_events_per_hour": 129.34131736526945,
+            "false_alarm_seconds": 9,
+            "healthy_alarm_fraction": 0.05389221556886228,
+            "fault_window_recall": 0.9033674963396779,
+            "fault_mission_recall": 1.0,
+            "detection_delay_s": null,
+            "delay_reason": "No fault-onset labels; confirmation time is not detection latency."
+          },
+          "candidate": {
+            "false_alarm_events": 0,
+            "healthy_exposure_hours": 0.04638888888888889,
+            "false_alarm_events_per_hour": 0.0,
+            "false_alarm_seconds": 0,
+            "healthy_alarm_fraction": 0.0,
+            "fault_window_recall": 0.9033674963396779,
+            "fault_mission_recall": 1.0,
+            "detection_delay_s": null,
+            "delay_reason": "No fault-onset labels; confirmation time is not detection latency."
+          }
+        },
+        "test": {
+          "baseline": {
+            "false_alarm_events": 7,
+            "healthy_exposure_hours": 0.043611111111111114,
+            "false_alarm_events_per_hour": 160.50955414012736,
+            "false_alarm_seconds": 16,
+            "healthy_alarm_fraction": 0.10191082802547771,
+            "fault_window_recall": 0.9089635854341737,
+            "fault_mission_recall": 1.0,
+            "detection_delay_s": null,
+            "delay_reason": "No fault-onset labels; confirmation time is not detection latency."
+          },
+          "candidate": {
+            "false_alarm_events": 1,
+            "healthy_exposure_hours": 0.043611111111111114,
+            "false_alarm_events_per_hour": 22.929936305732483,
+            "false_alarm_seconds": 3,
+            "healthy_alarm_fraction": 0.01910828025477707,
+            "fault_window_recall": 0.9033613445378151,
+            "fault_mission_recall": 1.0,
+            "detection_delay_s": null,
+            "delay_reason": "No fault-onset labels; confirmation time is not detection latency."
+          }
+        }
+      }
+    },
+    "fresh_evaluation": {
+      "status": "frozen_policy_new_missions",
+      "policy_sha256": "2ad1e4dc2e906753ae827317e541b53bb5934a3fb5502319696e27ff744c5d3e",
+      "selection": "Two chronologically latest unused missions per class, selected before reading signals or evaluation.",
+      "mission_ids": [
+        "rosbag2_2022_01_05-10_18_58",
+        "rosbag2_2022_01_10-08_55_08",
+        "rosbag2_2022_01_10-08_59_08",
+        "rosbag2_2022_01_10-09_08_21",
+        "rosbag2_2022_01_10-09_26_06",
+        "rosbag2_2022_01_10-09_34_38",
+        "rosbag2_2022_01_10-09_38_47",
+        "rosbag2_2022_01_10-09_53_30",
+        "rosbag2_2022_01_10-10_24_25",
+        "rosbag2_2022_01_10-10_28_35"
+      ],
+      "missions": 10,
+      "windows": 908,
+      "classification": {
+        "macro_f1": 0.824443870886274,
+        "accuracy": 0.8303964757709251,
+        "report": {
+          "0": {
+            "precision": 0.8309178743961353,
+            "recall": 0.9608938547486033,
+            "f1-score": 0.8911917098445595,
+            "support": 179.0
+          },
+          "1": {
+            "precision": 0.6694915254237288,
+            "recall": 0.8681318681318682,
+            "f1-score": 0.7559808612440191,
+            "support": 182.0
+          },
+          "2": {
+            "precision": 0.9603960396039604,
+            "recall": 0.5300546448087432,
+            "f1-score": 0.6830985915492958,
+            "support": 183.0
+          },
+          "3": {
+            "precision": 0.9427083333333334,
+            "recall": 0.9187817258883249,
+            "f1-score": 0.9305912596401028,
+            "support": 197.0
+          },
+          "4": {
+            "precision": 0.8488372093023255,
+            "recall": 0.874251497005988,
+            "f1-score": 0.8613569321533924,
+            "support": 167.0
+          },
+          "accuracy": 0.8303964757709251,
+          "macro avg": {
+            "precision": 0.8504701964118967,
+            "recall": 0.8304227181167054,
+            "f1-score": 0.824443870886274,
+            "support": 908.0
+          },
+          "weighted avg": {
+            "precision": 0.852206594726549,
+            "recall": 0.8303964757709251,
+            "f1-score": 0.8252114106617021,
+            "support": 908.0
+          }
+        },
+        "labels": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "confusion_matrix": [
+          [
+            172,
+            1,
+            0,
+            2,
+            4
+          ],
+          [
+            19,
+            158,
+            0,
+            0,
+            5
+          ],
+          [
+            2,
+            72,
+            97,
+            3,
+            9
+          ],
+          [
+            2,
+            2,
+            4,
+            181,
+            8
+          ],
+          [
+            12,
+            3,
+            0,
+            6,
+            146
+          ]
+        ]
+      },
+      "baseline": {
+        "false_alarm_events": 13,
+        "healthy_exposure_hours": 0.04972222222222222,
+        "false_alarm_events_per_hour": 261.45251396648047,
+        "false_alarm_seconds": 23,
+        "healthy_alarm_fraction": 0.12849162011173185,
+        "fault_window_recall": 0.8984910836762688,
+        "fault_mission_recall": 1.0,
+        "detection_delay_s": null,
+        "delay_reason": "No fault-onset labels; confirmation time is not detection latency."
+      },
+      "candidate": {
+        "false_alarm_events": 0,
+        "healthy_exposure_hours": 0.04972222222222222,
+        "false_alarm_events_per_hour": 0.0,
+        "false_alarm_seconds": 0,
+        "healthy_alarm_fraction": 0.0,
+        "fault_window_recall": 0.8916323731138546,
+        "fault_mission_recall": 1.0,
+        "detection_delay_s": null,
+        "delay_reason": "No fault-onset labels; confirmation time is not detection latency."
+      },
+      "limitations": "Previously unused missions from the same public platform; not independent aircraft or verified onset labels. Do not retune on these scores."
+    }
   },
   "nasa_battery": {
     "real_dataset_downloaded": true,

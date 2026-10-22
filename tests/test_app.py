@@ -47,3 +47,25 @@ def test_replay_seek_and_review(app):
     next(s for s in app.selectbox if s.label=='处理状态').select('已确认')
     next(b for b in app.button if b.label=='保存处理记录').click().run(); assert_no_errors(app)
     assert phm.events.read_events().iloc[0].status=='已确认'
+
+
+def test_import_preview_and_model_comparison(app):
+    if not any((r/'alert_policy.joblib').exists() for r in list_runs()): pytest.skip('No alert experiment')
+    app.radio[0].set_value('模型版本对比').run();assert_no_errors(app)
+    assert any('旧测试' in w.value for w in app.warning)
+    app.radio[0].set_value('数据导入与推理').run();assert_no_errors(app)
+    next(b for b in app.button if b.label=='载入现有真实飞行任务作为导入示例').click().run();assert_no_errors(app)
+    assert any(e.label=='保存此数据集' and not e.disabled for e in app.button)
+    # Missing axis is allowed to save as partial, but cannot silently claim a healthy prediction.
+    next(s for s in app.selectbox if s.label=='acc_x').select('（未提供）').run();assert_no_errors(app)
+    assert any('缺少传感器' in c.value for c in app.caption)
+
+
+def test_incident_ui_lifecycle(app):
+    if not any((r/'alert_policy.joblib').exists() for r in list_runs()): pytest.skip('No alert experiment')
+    app.radio[0].set_value('异常事件与复核').run();assert_no_errors(app)
+    next(b for b in app.button if b.label=='将所选完整事件加入复核台账').click().run();assert_no_errors(app)
+    next(s for s in app.selectbox if s.label=='新状态').select('已确认')
+    next(t for t in app.text_area if t.label=='处理依据 / 维修措施 / 复检结果').set_value('人工核对振动证据')
+    next(b for b in app.button if b.label=='保存事件处理').click().run();assert_no_errors(app)
+    assert phm.events.read_incidents().iloc[0].status=='已确认'

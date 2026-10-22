@@ -6,3 +6,4 @@ data/processed/
 runs/
 *.log
 .DS_Store
+data/imports/
