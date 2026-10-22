@@ -1,7 +1,28 @@
 {
-  "date":"2026-10-22",
-  "rflymad":{"official_metadata_verified":true,"adapter_implemented":true,"real_dataset_downloaded":false,"real_validation_completed":false,"real_macro_f1":null},
-  "nasa_battery":{"official_metadata_verified":true,"matlab_adapter_implemented":true,"leave_one_battery_out_code_implemented":true,"real_dataset_downloaded":false,"real_validation_completed":false,"real_mae_cycles":null},
-  "synthetic_starter":{"executed_in_previous_work":true,"synthetic_only":true,"reported_macro_f1":0.993},
-  "note":"Real data downloads unavailable in execution environment; do not attribute synthetic results to RflyMAD or NASA."
+  "date": "2026-10-22T12:15:41.636489+08:00",
+  "rflymad": {
+    "real_dataset_downloaded": false,
+    "real_validation_completed": false,
+    "note": "Use configured legacy adapter; current UAV benchmark is TII."
+  },
+  "tii_uav": {
+    "real_dataset_downloaded": true,
+    "real_validation_completed": true,
+    "run_id": "uav_20261022T041525_4c64fe",
+    "macro_f1": 0.8545891163001617,
+    "accuracy": 0.8541905855338691
+  },
+  "nasa_battery": {
+    "real_dataset_downloaded": true,
+    "real_validation_completed": true,
+    "run_id": "battery_20261022T041357_24f587",
+    "mae_cycles": 11.872690587388526,
+    "rmse_cycles": 14.662512177699687,
+    "interval_coverage": 0.6843853820598007
+  },
+  "synthetic_starter": {
+    "synthetic_only": true,
+    "reported_macro_f1": 0.9824387819643987,
+    "note": "Historical file, not rerun and not displayed as real-data score."
+  }
 }

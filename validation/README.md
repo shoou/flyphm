@@ -1,6 +1,6 @@
 # Two-branch real data validation
 
-Status: adapters implemented, public-source URLs checked, **original RflyMAD and NASA data not available in this runtime**. No real-data metrics are claimed.
+The interactive prototype now uses real TII UAV and NASA Battery data through `phm/`. See the root README for downloading, training and the dashboard. This folder retains standalone legacy validation commands; RflyMAD original data has not been downloaded or evaluated here.
 
 ## A. RflyMAD diagnosis
 Official: https://github.com/rfly-openha/documents/blob/main/4_resources/dataset.md
@@ -13,7 +13,7 @@ Official: https://github.com/rfly-openha/documents/blob/main/4_resources/dataset
 Official: https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/
 1. Download **Battery Data Set** from NASA and extract B0005.mat/B0006.mat/B0007.mat/B0018.mat.
 2. Run: `python real_data_validation.py nasa-battery --root /data/NASA_battery --out results/nasa_battery`
-3. This baseline uses only discharge capacities; defines observed EOL as SOH <= 70% of first observed discharge; excludes units without observed EOL; leave-one-battery-out validation; outputs RUL in discharge cycles. A specimen may not reach the criterion; then 3+ observed EOL specimens are required or this script deliberately refuses to report an RUL score.
+3. This baseline uses only discharge capacities; defines observed EOL as capacity <= 1.4 Ah (70% of rated 2 Ah); excludes units without observed EOL and post-EOL cycles; leave-one-battery-out validation; outputs RUL in discharge cycles. A specimen may not reach the criterion; then 3+ observed EOL specimens are required or this script deliberately refuses to report an RUL score.
 4. For bearing RUL, separately adapt NASA IMS/FEMTO high frequency vibration streams; do not treat instantaneous fault detection as RUL. Verify physical failure criteria, censoring and experimental time base.
 
 ## Quality gate

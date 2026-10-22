@@ -5,13 +5,14 @@ Usage:
 The mapping JSON provides native dataset column mappings and fault labels.
 """
 import argparse,json,re
+import joblib
 from pathlib import Path
 import numpy as np,pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import GroupShuffleSplit,LeaveOneGroupOut
-from sklearn.metrics import classification_report,confusion_matrix,mean_absolute_error
+from sklearn.metrics import classification_report,confusion_matrix,mean_absolute_error,mean_squared_error
 from scipy.io import loadmat
 
 REQUIRED=['timestamp_s','device_id','fault_label']
@@ -48,7 +49,7 @@ def rfly(root,mapping_file,out):
     for flight,g in df.groupby('device_id'):
         g=g.sort_values('timestamp_s')
         for end in range(64,len(g)+1,32):
-            w=g.iloc[end-64:end];row={'device_id':flight,'fault_label':w.fault_label.iloc[-1]}
+            w=g.iloc[end-64:end];row={'device_id':flight,'fault_label':w.fault_label.iloc[-1], 'timestamp_s':float(w.timestamp_s.iloc[-1])}
             for c in mapping['features']:
                 v=w[c].to_numpy(float);row[c+'_mean']=np.nanmean(v) if np.isfinite(v).any() else np.nan;row[c+'_std']=np.nanstd(v) if np.isfinite(v).any() else np.nan
             rows.append(row)
@@ -57,12 +58,15 @@ def rfly(root,mapping_file,out):
     feats=[c for c in w if c.endswith(('_mean','_std'))]
     tr,te=next(GroupShuffleSplit(n_splits=1,test_size=.25,random_state=42).split(w,groups=w.device_id))
     if w.iloc[tr].fault_label.nunique()<2:raise RuntimeError('Training split contains less than 2 classes; expand dataset.')
+    if set(w.iloc[tr].fault_label) != set(w.iloc[te].fault_label):raise RuntimeError('Train/test class coverage differs; add independent flights per class before reporting a score.')
     model=make_pipeline(SimpleImputer(strategy='median'),RandomForestClassifier(n_estimators=250,min_samples_leaf=2,class_weight='balanced',random_state=42))
     model.fit(w.iloc[tr][feats],w.iloc[tr].fault_label);pred=model.predict(w.iloc[te][feats]);actual=w.iloc[te].fault_label
-    summary={'validation_status':'REAL_DATA_EVALUATED','data_source':'RflyMAD user-provided processed CSV','flights_total':int(w.device_id.nunique()),'flights_test':int(w.iloc[te].device_id.nunique()),'windows_test':len(te),'report':classification_report(actual,pred,zero_division=0,output_dict=True),'labels':sorted(set(actual)|set(pred))}
+    summary={'validation_status':'USER_PROVIDED_DATA_EVALUATED','data_source':'RflyMAD user-provided processed CSV; provenance must be independently checked','flights_total':int(w.device_id.nunique()),'flights_test':int(w.iloc[te].device_id.nunique()),'windows_test':len(te),'report':classification_report(actual,pred,zero_division=0,output_dict=True),'labels':sorted(set(actual)|set(pred))}
     summary['confusion_matrix']=confusion_matrix(actual,pred,labels=summary['labels']).tolist()
     (out/'metrics.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
-    pd.DataFrame({'flight':w.iloc[te].device_id,'true':actual,'pred':pred}).to_csv(out/'predictions.csv',index=False)
+    pd.DataFrame({'flight':w.iloc[te].device_id,'timestamp_s':w.iloc[te].timestamp_s,'true':actual,'pred':pred}).to_csv(out/'predictions.csv',index=False)
+    joblib.dump({'model':model,'features':feats,'mapping':mapping},out/'models.joblib')
+    (out/'split.json').write_text(json.dumps({'train':sorted(w.iloc[tr].device_id.unique().tolist()),'test':sorted(w.iloc[te].device_id.unique().tolist())},indent=2))
     print(json.dumps({'validation_status':summary['validation_status'],'macro_f1':summary['report']['macro avg']['f1-score'],'flights_test':summary['flights_test']},ensure_ascii=False))
 
 def mat_discharge_capacities(path):
@@ -89,7 +93,7 @@ def nasa_battery(root,out):
         try:
             a=mat_discharge_capacities(p)
             if len(a)<20:continue
-            a['battery_id']=p.stem;a['cycle_idx']=np.arange(len(a));a['soh']=a.capacity_ah/a.capacity_ah.iloc[0];series.append(a)
+            a['battery_id']=p.stem;a['cycle_idx']=np.arange(1,len(a)+1);a['soh']=a.capacity_ah/2.0;series.append(a)
         except Exception as e:print('Skip',p,e)
     if len(series)<3:raise RuntimeError('Require >=3 battery specimens for specimen-held-out evaluation; no metric generated.')
     all_data=pd.concat(series,ignore_index=True);all_data.to_csv(out/'capacity_curves.csv',index=False)
@@ -98,8 +102,9 @@ def nasa_battery(root,out):
     for bid,g in all_data.groupby('battery_id'):
         hit=g[g.soh<=.7]
         if len(hit):eol[bid]=int(hit.cycle_idx.iloc[0])
-    if len(eol)<3:raise RuntimeError('Fewer than three specimens reach 70% initial-capacity threshold; EOL cannot be validated as defined.')
+    if len(eol)<3:raise RuntimeError('Fewer than three specimens reach 1.4 Ah threshold; EOL cannot be validated as defined.')
     sub=all_data[all_data.battery_id.isin(eol)].copy()
+    sub=sub[sub.apply(lambda r:r.cycle_idx<eol[r.battery_id],axis=1)].copy()
     sub['rul_cycles']=sub.apply(lambda r:max(0,eol[r.battery_id]-r.cycle_idx),axis=1)
     # do not leak future specimen capacity; model uses observed capacity+cycle only
     groups=sub.battery_id.unique();preds=[]
@@ -109,9 +114,10 @@ def nasa_battery(root,out):
         reg=RandomForestRegressor(n_estimators=250,min_samples_leaf=3,random_state=42)
         reg.fit(train[['cycle_idx','soh']],train.rul_cycles)
         x=reg.predict(test[['cycle_idx','soh']]);preds.append(pd.DataFrame({'battery_id':held,'cycle_idx':test.cycle_idx,'true_rul':test.rul_cycles,'pred_rul':np.maximum(x,0)}))
+        joblib.dump(reg,out/f'{held}.joblib')
     predictions=pd.concat(preds,ignore_index=True);predictions.to_csv(out/'rul_predictions.csv',index=False)
     per={bid:float(mean_absolute_error(g.true_rul,g.pred_rul)) for bid,g in predictions.groupby('battery_id')}
-    metrics={'validation_status':'REAL_DATA_EVALUATED','data_source':'NASA PCoE battery MATLAB','evaluation':'leave-one-battery-out','eol_definition':'first observed SOH <= 0.70 of first discharge capacity','batteries':list(eol),'eol_cycle_by_battery':eol,'mae_cycles':float(mean_absolute_error(predictions.true_rul,predictions.pred_rul)),'mae_by_battery':per,'limitations':'Only specimens with observed EOL used; first-cycle capacity normalization is not rated-capacity SOH; RUL is per discharge cycle, not flight hours.'}
+    metrics={'validation_status':'USER_PROVIDED_DATA_EVALUATED','data_source':'NASA PCoE battery MATLAB; user-provided files','evaluation':'leave-one-battery-out, pre-EOL only','eol_definition':'first capacity <= 1.4 Ah (70% of rated 2 Ah); verify specimen protocol','batteries':list(eol),'eol_cycle_by_battery':eol,'mae_cycles':float(mean_absolute_error(predictions.true_rul,predictions.pred_rul)),'rmse_cycles':float(np.sqrt(mean_squared_error(predictions.true_rul,predictions.pred_rul))),'mae_by_battery':per,'limitations':'Only pre-EOL specimens/cycles used; RUL is per discharge cycle, not flight hours. This legacy command assumes rated 2 Ah cells.'}
     (out/'metrics.json').write_text(json.dumps(metrics,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(metrics,ensure_ascii=False,indent=2))
 
 if __name__=='__main__':

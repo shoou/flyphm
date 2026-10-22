@@ -59,12 +59,16 @@ def make_data(n_devices=36, steps=90, seed=42):
 
 def make_windows(df, window=12, stride=6):
     out=[]
-    for device_id,g in df.groupby('device_id'):
+    group_cols = ['device_id'] + (['mission_id'] if 'mission_id' in df else [])
+    for _,g in df.groupby(group_cols):
+        device_id = g.device_id.iloc[0]
         g=g.sort_values('timestamp_s')
         for stop in range(window,len(g)+1,stride):
             sl=g.iloc[stop-window:stop]
             row={'device_id':device_id, 'device_type':sl.device_type.iloc[-1],
-                 'timestamp_s':float(sl.timestamp_s.iloc[-1]),'fault_label':sl.fault_label.iloc[-1]}
+                 'timestamp_s':float(sl.timestamp_s.iloc[-1])}
+            if 'fault_label' in sl: row['fault_label'] = sl.fault_label.iloc[-1]
+            if 'mission_id' in sl: row['mission_id'] = sl.mission_id.iloc[-1]
             for f in FEATURES:
                 v=sl[f].to_numpy(dtype=float)
                 row[f]=float(np.nanmean(v)) if np.isfinite(v).any() else np.nan
@@ -97,6 +101,9 @@ def health_scores(row):
     scores={}
     for name,cols in SUBSYSTEMS.items():
         penalties=[]
+        if any(not np.isfinite(float(row.get(field, np.nan))) for field in cols):
+            scores[name] = None
+            continue
         for field in cols:
             x=float(row[field]); low,high=RANGES[field]
             # mid-point/upper/lower directional rules are deliberately illustrative.
@@ -104,6 +111,8 @@ def health_scores(row):
             else: p=np.clip((x-low)/(high-low),0,1)
             penalties.append(float(p))
         scores[name]=round(100*(1-np.mean(penalties)),1)
+    if any(v is None for v in scores.values()):
+        return {'overall':None,'subsystems':scores,'score_status':'unknown_missing_data'}
     base=sum(WEIGHTS[k]*scores[k] for k in scores)
     overall=min(base,min(scores[k]+10 for k in CRITICAL))
     return {'overall':round(max(0,min(100,overall)),1),'subsystems':scores,'score_status':'illustrative_uncalibrated'}
@@ -115,17 +124,25 @@ def rul_from_history(history, feature='vibration_rms', threshold=3.0, min_points
         return {'status':'insufficient_history','rul_hours':None}
     x=h.timestamp_s.to_numpy(float);y=h[feature].to_numpy(float)
     slope=float(np.polyfit(x-x[0],y,1)[0]);current=float(y[-1])
-    if current>=threshold:return {'status':'threshold_reached','rul_hours':0.0,'slope_per_hour':slope}
-    if slope<=0:return {'status':'no_detectable_degradation','rul_hours':None,'slope_per_hour':slope}
-    return {'status':'exploratory_estimate','rul_hours':round((threshold-current)/slope,2),'slope_per_hour':slope}
+    if current>=threshold:return {'status':'threshold_reached','rul_hours':0.0,'slope_per_hour':slope*3600}
+    if slope<=0:return {'status':'no_detectable_degradation','rul_hours':None,'slope_per_hour':slope*3600}
+    return {'status':'exploratory_estimate','rul_hours':round((threshold-current)/slope/3600,6),'slope_per_hour':slope*3600}
 
 def predict(df, models_path, output):
     m=joblib.load(models_path);windows=make_windows(df)
     X=windows[m['features']]
+    invalid = ~np.isfinite(X).all(axis=1)
+    X = X.replace([np.inf, -np.inf], np.nan)
     windows['predicted_fault']=m['model'].predict(X)
     windows['model_max_class_probability']=m['model'].predict_proba(X).max(axis=1).round(3)
     windows['anomaly_flag']=(m['anomaly'].predict(X)==-1)
     windows['anomaly_score']=m['anomaly'].decision_function(X).round(4)
+    windows.loc[invalid, 'predicted_fault'] = 'unknown'
+    windows.loc[invalid, 'model_max_class_probability'] = np.nan
+    windows.loc[invalid, 'anomaly_score'] = np.nan
+    windows['anomaly_flag'] = windows['anomaly_flag'].astype('boolean')
+    windows.loc[invalid, 'anomaly_flag'] = pd.NA
+    windows['data_quality'] = np.where(invalid, 'invalid', 'valid')
     output_rows=[]
     for _,w in windows.iterrows():
         row=w.to_dict();row.update(health_scores(w))
@@ -142,6 +159,6 @@ def main():
     if a.mode in ('predict','all'):
         print('Predicted windows',predict(pd.read_csv(a.input),Path(a.model_dir)/'models.joblib',a.output))
     if a.mode in ('rul','all'):
-        demo=pd.DataFrame({'timestamp_s':np.arange(36,dtype=float),'vibration_rms':np.linspace(.6,2.4,36)})
+        demo=pd.DataFrame({'timestamp_s':np.arange(36,dtype=float)*3600,'vibration_rms':np.linspace(.6,2.4,36)})
         print('Synthetic hourly degradation RUL',rul_from_history(demo,threshold=3.0))
 if __name__=='__main__':main()
